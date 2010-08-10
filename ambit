@@ -1,0 +1,101 @@
+#!/bin/bash 
+
+# Name: ambit
+# Modified: 20100808
+# Description: String Set Expander
+# Copyright: 2010 Michael Marschall
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Get basename to utilize cute way of passing option/condition.
+IDOWOT=`basename $0`
+
+# Check system wide massh location for overrides.
+if [ -f /usr/local/etc/$IDOWOT ]
+then
+    source /usr/local/etc/$IDOWOT
+fi
+if [ -f $HOME/.$IDOWOT ]
+then
+    source $HOME/.$IDOWOT
+fi
+if [ -z $ALLFILES ]
+then
+    ALLFILES="/usr/local/var/massh"
+fi
+if [ -z $MYFILES ]
+then
+    MYFILES="$HOME/massh"
+fi
+
+###############################################################################
+# Usage                                                                       #
+###############################################################################
+if [ -z $1 ]
+then
+    echo "Usage: $IDOWOT RANGE"
+    echo
+    echo "Examples: "
+    echo "    ambit dbsrv[1..10].twitter.com"
+    echo "    ambit [win,linux,solaris].facebook.com"
+    echo "    ambit [[1..10],[20..30]].microsoft.com"
+    echo "    ambit [sk1-1,sk1-2]adcopt-00[1..6].ysm.sk1"
+    echo "    ambit web[1..100].google.com:db[1..500].apple.com"
+    echo "    ambit sk1-1adcopt-00[1..6].ysm.sk1.yahoo.com:[1,2].a.tt"
+    echo
+	exit
+fi 
+
+# Work with comma separated ranges.
+EXTENT=$(echo $1 | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g')
+
+for range in $EXTENT
+do
+    if [ -f $range ]
+    then
+        for entry in `cat $range | egrep -v '^\#|^\s*$' \
+            | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g'`
+        do
+            for host in `eval echo $entry`
+            do
+                echo $host
+            done
+        done
+    elif [ -f $ALLFILES/hosts.$range ] 
+    then
+        for entry in `cat $ALLFILES/hosts.$range | egrep -v '^\#|^\s*$' \
+            | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g'`
+        do
+            for host in `eval echo $entry`
+            do
+                echo $host
+            done
+        done
+    elif [ -f $MYFILES/hosts.$range ]
+    then
+        for entry in `cat $MYFILES/hosts.$range | egrep -v '^\#|^\s*$' \
+            | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g'`
+        do
+            for host in `eval echo $entry`
+            do
+                echo $host
+            done
+        done
+    else
+        for host in `eval echo $range`
+        do
+            echo $host
+        done
+    fi
+done

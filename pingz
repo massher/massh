@@ -1,0 +1,159 @@
+#!/bin/bash
+
+# Name: pingz
+# Author: mmarschall
+# Modified: 20100808
+# Description:
+# Ping or Resolve hosts listed in a given file. 
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Get basename to utilize cute way of passing option/condition.
+IDOWOT=`basename $0`
+
+# Check system wide massh location for overrides. Otherwise set system wide
+# location for massh related 'hosts.' 'files.' and 'scripts.' files.
+# Check system wide massh location for overrides.
+if [ -f /usr/local/etc/$IDOWOT ]
+then
+    source /usr/local/etc/$IDOWOT
+fi
+if [ -f $HOME/.$IDOWOT ]
+then
+    source $HOME/.$IDOWOT
+fi
+if [ -z $ALLFILES ]
+then
+    ALLFILES="/usr/local/var/massh"
+fi
+if [ -z $MYFILES ]
+then
+    MYFILES="$HOME/massh"
+fi 
+
+# Get OS.
+THISOS=`uname`
+
+###############################################################################
+# Usage                                                                       #
+###############################################################################
+function usage {
+    echo "Usage:" 
+    echo "      $IDOWOT [ f,r ] [ l,p ] " 
+    echo
+    echo "      -f        Filename with hostnames, one per line. Located in one"
+    echo "                the following directories:"
+    echo "                  * $ALLFILES"
+    echo "                  * $MYFILES"
+    echo "                  * current directory"
+    echo "      -r        Range either arbitrary or file defined."
+    echo "      -l        Lookup hosts in DNS."
+    echo "      -p        Ping hosts."
+    echo "      -h        Help text or otherwise what you are reading right"
+    echo "                now."
+    echo
+    echo "Examples: "
+    echo "    $IDOWOT -r ac2-1iwseps-00[1-5].ysm.ac2 -p"
+    echo "    $IDOWOT -r ac21 -l"
+    echo "    $IDOWOT -f hosts.all -p"
+    echo
+	exit 69
+}
+
+# No options
+if [ "$1" = "" ] ; then
+   usage
+   exit 70
+fi
+
+# Traping is good
+trap cleanup 2
+function cleanup { 
+    exit 71
+}
+
+
+###############################################################################
+# Command Line Args                                                           #
+###############################################################################
+while getopts "hf:plr:" Option
+do
+   case $Option in
+        f ) HOSTS=$OPTARG
+        	;;
+        h ) usage
+        	exit ;;
+        l ) LOOKUP=yes
+        	;;
+        p ) PING=yes
+        	;;
+	    r ) RANGE=$OPTARG
+            ;;
+        * ) usage
+            ;;
+   esac
+done
+
+###############################################################################
+# Get Hosts from File or Range                                                #
+###############################################################################
+if [ -n "$FILE" ]
+then
+    HOSTLIST=(`ambit $FILE`)
+elif [ -n "$RANGE" ]
+then
+    HOSTLIST=(`ambit $RANGE`)
+else
+    echo "Dude I have no clue what just happened."
+fi
+
+index=0
+index_count=${#HOSTLIST[@]}
+
+if  [ "$PING" = yes ]  
+then
+	while [ $index -lt $index_count ]
+    do 
+		host=${HOSTLIST[$index]}
+        if [ "$THISOS" = "Linux" ]
+        then
+            if ping -c1 -W2 $host > /dev/null 2>&1
+            then
+                echo "$host is Up"
+            else 
+                echo "$host is Down"
+            fi
+        fi
+        if [ "$THISOS" = "Darwin" ]
+        then
+            if ping -c1 -t1 $host > /dev/null 2>&1
+            then
+                echo "$host is Up"
+            else
+                echo "$host is Down"
+            fi
+        fi 
+        let "index = $index + 1"
+    done
+elif [ "$LOOKUP" = yes ]
+then
+    while [ $index -lt $index_count ]
+        do
+		host=${HOSTLIST[$index]}
+        host $host
+		let "index = $index + 1"
+    done
+else
+    usage
+fi

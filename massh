@@ -1,0 +1,485 @@
+#!/bin/bash -
+
+# Name: massh
+# Modified: 20100808
+# Description:
+# Mass SSH'er that can also push and run scripts.  
+# Copyright: 2010 Michael Marschall
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Get basename and use it like it's hot. 
+IDOWOT=`basename $0`
+
+
+# Check system wide massh location for overrides. Otherwise set system wide
+# location for massh related 'hosts.' 'files.' and 'scripts.' files.
+# Check system wide massh location for overrides.
+if [ -f /usr/local/etc/$IDOWOT ]
+then
+    source /usr/local/etc/$IDOWOT
+fi
+if [ -f $HOME/.$IDOWOT ]
+then
+    source $HOME/.$IDOWOT
+fi
+if [ -z $ALLFILES ]
+then
+    ALLFILES="/usr/local/var/massh"
+fi
+if [ -z $MYFILES ]
+then
+    MYFILES="$HOME/massh"
+fi 
+
+# Time Stamp for first line of hosts.results.
+TIMESTAMP=`date +'%Y-%m-%d %H:%M:%S'`
+
+# Trap Wisely
+trap cleanup 2
+
+###############################################################################
+# Set PATH                                                                    #
+###############################################################################
+if [ -d "$HOME/bin" ]
+then 
+    PATH=/bin:/usr/bin:/usr/local/bin:$HOME/bin
+else
+    PATH=/bin:/usr/bin:/usr/local/bin
+fi
+
+###############################################################################
+# Usage                                                                       #
+###############################################################################
+function usage {  
+    echo "Usage: "
+    echo "      $IDOWOT [ f,r ] [ c,s,p ] [ o,S[R],F[R] ]"
+    echo 
+    echo "      -f        Filename with hostnames, one per line. Located in one"
+    echo "                the following directories:"
+    echo "                  * $ALLFILES"
+    echo "                  * $MYFILES"
+    echo "                  * current directory"
+    echo "      -r        Arbitrary or file defined ranges."
+    echo "      -c        Remote command to run. Be sure to quote commmands that"
+    echo "                contain spaces."
+    echo "      -s        Script to push to all hosts and run."
+    echo "      -p        File to push to all hosts."
+    echo "      -o        Formatted output. Otherwise the Succeeded or"
+    echo "                Failed exit status of the remote command is all you"
+    echo "                will see."
+    echo "      -P        Number of concurrent or parallel ssh's to run,"
+    echo "                the default is $PARALLEL."
+    echo "      -t        ssh timeout in seconds, the default is "
+    echo "      -F        Output only hostnames where remote command failed."
+    echo "      -S        Output only hostnames where remote command succeeded."
+    echo "      -R        Regurgitate F,S output in a format that can be"
+    echo "                plugged right back into $IDOWOT -r"
+    echo "      -h        Help text or otherwise what you are reading right"
+    echo "                now."
+    echo "      -O        Additional ssh options. The following options are"
+    echo "                the defaults:"
+    echo
+    echo "$SSHOPTS"
+    echo 
+    echo "Examples: "
+    echo "    $IDOWOT -f hosts.txt -c 'uptime' -S"
+    echo "    $IDOWOT -f /tmp/hosts.txt -c 'cat /etc/passwd | grep ^root:' -o"
+    echo "    $IDOWOT -r dbservers -p ~/.hushlogin"
+    echo "    $IDOWOT -r web.[1,5,[10..15]].google.com -c 'last | head -10' -o"
+    echo "    $IDOWOT -r webservers:dbservers:appservers -c 'df -h'"
+    echo "    $IDOWOT -r [1,2].a.tt -c 'ps -e | grep httpd | wc -l' -o"  
+    echo
+    exit 69
+}
+
+###############################################################################
+# Command Line Args                                                           #
+###############################################################################
+while getopts "hf:P:c:t:op:O:s:r:FSR" opt
+do
+    case $opt in
+        f) FILE=$OPTARG
+            ;;
+        r) RANGE=$OPTARG
+            ;;
+        c) COMMAND=$OPTARG
+            ;;
+        s) SCRIPT=$OPTARG
+            ;;
+        p) PUSH=$OPTARG
+            ;;
+        o) OUTPUT=yes
+            ;;
+        P) PARALLEL=$OPTARG
+            ;;
+        t) TIMEOUT=$OPTARG
+            ;;
+        O) OPTS=$OPTARG
+            ;;
+        F) FAILURE=yes
+            ;;
+        S) SUCCESS=yes
+            ;;
+        R) REGURG=yes
+            ;;
+        h) usage
+            ;;
+    esac
+done
+
+###############################################################################
+# Options                                                                     #
+###############################################################################
+# Change these or supply something different on the command line.
+
+# Parallel SSH's to run, -P on the command line.
+if [ -z $PARALLEL ]
+then
+        PARALLEL=30
+fi
+
+# SSH Timeout in seconds, -t on the command line.
+if [ -z $TIMEOUT ]
+then    
+        TIMEOUT=5
+fi        
+
+# SSH Defaults
+SSHOPTS="\
+-o StrictHostKeyChecking=no \
+-o LogLevel=QUIET \
+-o BatchMode=yes \
+-o ConnectTimeout=$TIMEOUT \
+$OPTS"
+
+# No Options ?
+if [ "$#" -eq 0 ]
+then
+    usage
+fi
+
+if [ -n "$FILE" ]
+then
+    if [ -z "$COMMAND" ] && [ -z "$PUSH" ] && [ -z "$SCRIPT" ]
+    then
+        echo
+        echo "OOPS: You must use the -f option with either "
+        echo "      the -c, -p or -s option"
+        echo
+        usage
+    fi
+elif [ -n "$RANGE" ]
+then
+   if [ -z "$COMMAND" ] && [ -z "$PUSH" ] && [ -z "$SCRIPT" ]
+    then
+        echo
+        echo "OOPS: You must use the -r option with either "
+        echo "      the -c, -p or -s option"
+        echo
+        usage
+    fi
+else
+    usage
+fi
+
+# [Try] to log all massh runs by default. This can be overridden via ~/.massh
+if ! [ "$WELOGIN" = "no" ]
+then
+    if which logger > /dev/null 2>&1
+    then
+        logger -i -t massh -- "USER=$USER COMMAND=$IDOWOT $@"
+    fi
+fi
+
+# [Re]Create hosts.results for S,R options.
+if [ "$SUCCESS" = "yes" ] || [ "$FAILURE" = "yes" ]
+then
+    echo "# $TIMESTAMP $IDOWOT $@" > $MYFILES/hosts.results
+fi
+
+# Temp File Location
+if [ -d ~/tmp ]
+then
+    TEMPDIR=~/tmp
+else
+    TEMPDIR=/tmp
+fi
+
+###############################################################################
+# Get Hosts from File or Range                                                #
+###############################################################################
+if [ -n "$FILE" ]
+then
+    HOSTLIST=(`ambit $FILE`)
+elif [ -n "$RANGE" ]
+then
+    HOSTLIST=(`ambit $RANGE`)
+else
+    echo "Dude I have no clue what just happened."
+fi
+
+index=0
+index_count=${#HOSTLIST[@]}
+
+###############################################################################
+# Pushing Files and Dirs                                                      #
+###############################################################################
+for sending in $PUSH $SCRIPT
+do
+    if [ -n "$PUSH" ]
+    then
+        prefix="file"
+    elif [ -n "$SCRIPT" ]
+    then
+        prefix="script"
+    fi
+    if [ -f $sending ]
+    then
+        SENDING=$sending
+        SENT=`basename $SENDING`
+    elif [ -f $MYFILES/$prefix.$sending ]
+    then
+        SENDING="$MYFILES/$prefix.$sending"
+        SENT=`basename $SENDING`
+    elif [ -f $ALLFILES/$prefix.$sending ]
+    then
+        SENDING="$ALLFILES/$prefix.$sending"
+        SENT=`basename $SENDING`
+    else
+        :
+    fi
+done
+
+###############################################################################
+# Functions                                                                   #
+###############################################################################
+# Full Output
+function showoutput {
+    ssh $SSHOPTS $HOST "$COMMAND"
+    if ! [ $? -eq 0 ]
+    then
+        echo "Failed"
+    fi
+}
+
+# Simple Verification (Minimal Output)
+function nooutput {
+    ssh $SSHOPTS $HOST "$COMMAND" > /dev/null 2>&1
+    if [ $? -eq 0 ]
+    then
+        if [ "$SUCCESS" = "yes" ]
+        then
+            if  [ "$REGURG" = "yes" ]
+            then
+                echo -n "$HOST:"
+            else
+                echo "$HOST"
+                echo "$HOST" >> $MYFILES/hosts.results
+            fi
+        elif [ "$FAILURE" = "yes" ] 
+        then
+            :
+        else
+            echo "$HOST : Succeeded"
+        fi
+    else
+        if [ "$FAILURE" = "yes" ] 
+        then
+            if  [ "$REGURG" = "yes" ]
+            then
+                echo -n "$HOST:"
+            else
+                echo "$HOST"
+                echo "$HOST" >> $MYFILES/hosts.results
+            fi
+        elif [ "$SUCCESS" = "yes" ]
+        then
+            :
+        else
+            echo "$HOST : Failed"
+        fi
+    fi
+}
+
+# Push script/file only
+function push {
+    scp $SSHOPTS $SENDING $HOST: > /dev/null 2>&1 
+    if [ $? -eq 0 ]
+    then
+        echo "$HOST : Succeeded"
+    else
+        echo "$HOST : Failed"
+    fi
+}
+
+# Push and run a script
+function pushandrun {
+    scp $SSHOPTS $SENDING $HOST: > /dev/null 2>&1 && \
+        ssh $SSHOPTS $HOST "./$SENT; \
+        rm -rf ./$SENT" \
+        > /dev/null 2>&1
+    if [ $? -eq 0 ]
+    then
+        echo "$HOST : Succeeded"
+    else
+        echo "$HOST : Failed"
+    fi
+}
+
+# Push and run a script with output
+function pushandrunout {
+    scp $SSHOPTS $SENDING $HOST: > /dev/null 2>&1 && \
+        ssh $SSHOPTS $HOST "./$SENT; \
+        rm -rf ./$SENT" 
+    if ! [ $? -eq 0 ]
+    then
+        echo "Failed"
+    fi
+}
+
+function cleanup {
+    TRAP="yes"
+}
+
+###############################################################################
+# Where Sausage is Made                                                       # 
+###############################################################################
+airbourne="0"
+while [[ $index -le $index_count && "$airbourne" -lt 1 ]]
+do
+    # The guest of honor.
+    HOST=${HOSTLIST[$index]}
+
+    # Check to see if $HOST should be intentionally skipped. 
+    if [ -f $ALLFILES/hosts.down ] && [ -n "$HOST" ]
+    then
+        DWNHOST="$ALLFILES/hosts.down"
+        if grep $HOST $DWNHOST > /dev/null 2>&1
+        then
+            if [ -n $SUCCESS ] || [ -n $FAILURE ] 
+            then
+                :
+            else
+                echo "$HOST : Skipping"
+             fi
+            if [ $index -lt $index_count ]
+            then
+                let "index++"
+                continue
+            else
+                continue
+            fi
+        fi
+    fi
+    if [ -f $MYFILES/hosts.down ] && [ -n "$HOST" ]
+    then
+        DWNHOST="$MYFILES/hosts.down"
+        if grep $HOST $DWNHOST > /dev/null 2>&1
+        then
+            if [ -n $SUCCESS ] || [ -n $FAILURE ]
+            then
+                :
+            else
+                echo "$HOST : Skipping"
+             fi
+            if [ $index -lt $index_count ]
+            then
+                let "index++"
+                continue
+            else
+                continue
+            fi
+        fi
+    fi
+
+    if [ "$TRAP" = "yes" ]
+    then
+        break
+    else
+        if [ `jobs -r | wc -l` -lt $PARALLEL ]
+        then
+            # Simple Output
+            if  [ -z "$OUTPUT" ] && [ -z "$SCRIPT" ] && \
+                [ -z "$PUSH" ]   && [ -n "$HOST" ]
+            then
+                 nooutput &
+                 let "index++"
+                 continue
+            fi
+
+            # Full Output
+            if  [ -n "$OUTPUT" ] && [ -z "$SCRIPT" ] && \
+                [ -z "$PUSH" ]   && [ -n "$HOST" ]
+            then
+                showoutput > $TEMPDIR/$HOST.$USER.$IDOWOT 2>&1 &
+                inflight[$!]=$HOST
+            fi
+
+            # Push
+            if  [ -z "$OUTPUT" ] && [ -z "$SCRIPT" ] && \
+                [ -n "$PUSH" ]   && [ -n "$HOST" ]
+            then
+                push &
+                let "index++"
+                continue
+            fi
+
+            # Push and Run Simple Output
+            if  [ -z "$OUTPUT" ] && [ -n "$SCRIPT" ] && \
+                [ -z "$PUSH" ]   && [ -n "$HOST" ]
+            then
+                pushandrun &
+                let "index++"
+                continue
+            fi
+
+            # Push and Run Full Output
+            if  [ -n "$OUTPUT" ] && [ -n "$SCRIPT" ] && \
+                [ -z "$PUSH" ]   && [ -n "$HOST" ]
+            then
+                pushandrunout  > $TEMPDIR/$HOST.$USER.$IDOWOT 2>&1 &
+                inflight[$!]=$HOST
+            fi
+
+            # Inflight Entertainment
+            for flying in ${!inflight[*]}
+            do
+                if [ "$TRAP" = "yes" ]
+                then
+                    break
+                fi
+                if ! kill -0 $flying > /dev/null 2>&1
+                then
+                    while read line
+                    do
+                        echo "${inflight[$flying]} : $line"
+                    done < $TEMPDIR/${inflight[$flying]}.$USER.$IDOWOT
+                    rm -f $TEMPDIR/${inflight[$flying]}.$USER.$IDOWOT
+                    unset inflight[$flying]
+                fi
+            done
+            if [ ${#inflight[*]} -eq 0 ]
+            then
+                let "airbourne++"
+            fi
+            if [ $index -lt $index_count ] 
+            then
+                let "index++"
+            fi
+        fi
+    fi
+done
+rm -rf $TEMPDIR/*$USER.$IDOWOT > /dev/null 2>&1
+wait
