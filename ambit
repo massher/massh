@@ -1,7 +1,7 @@
-#!/bin/bash 
+#!/bin/bash -
 
 # Name: ambit
-# Modified: 20100808
+# Modified: 20100822
 # Description: String Set Expander
 # Copyright: 2010 Michael Marschall
 
@@ -21,23 +21,13 @@
 # Get basename to utilize cute way of passing option/condition.
 IDOWOT=`basename $0`
 
-# Check system wide massh location for overrides.
-if [ -f /usr/local/etc/$IDOWOT ]
-then
-    source /usr/local/etc/$IDOWOT
-fi
-if [ -f $HOME/.$IDOWOT ]
-then
-    source $HOME/.$IDOWOT
-fi
-if [ -z $ALLFILES ]
-then
-    ALLFILES="/usr/local/var/massh"
-fi
-if [ -z $MYFILES ]
-then
-    MYFILES="$HOME/massh"
-fi
+# System Wide Config File and Massh Dir 
+[ -f /usr/local/etc/$IDOWOT ] && source /usr/local/etc/$IDOWOT
+[ -z $ALLFILES ] && ALLFILES="/usr/local/var/massh"
+
+# User Specific Config File and Massh Dir 
+[ -f $HOME/.$IDOWOT ] && source $HOME/.$IDOWOT
+[ -z $MYFILES ] && MYFILES="$HOME/massh"
 
 ###############################################################################
 # Usage                                                                       #
@@ -47,53 +37,68 @@ then
     echo "Usage: $IDOWOT RANGE"
     echo
     echo "Examples: "
-    echo "    ambit dbsrv[1..10].twitter.com"
-    echo "    ambit [win,linux,solaris].facebook.com"
-    echo "    ambit [[1..10],[20..30]].microsoft.com"
-    echo "    ambit [sk1-1,sk1-2]adcopt-00[1..6].ysm.sk1"
-    echo "    ambit web[1..100].google.com:db[1..500].apple.com"
-    echo "    ambit sk1-1adcopt-00[1..6].ysm.sk1.yahoo.com:[1,2].a.tt"
+    echo "    $IDOWOT [1..10].twitter.com"
+    echo "    $IDOWOT [win,linux,solaris].facebook.com"
+    echo "    $IDOWOT [[1..10],[20..30]].microsoft.com"
+    echo "    $IDOWOT [sk1-1,sk1-2]adcopt-00[1..6].ysm.sk1"
+    echo "    $IDOWOT web[1..100].google.com:db[1..500].apple.com"
+    echo "    $IDOWOT sk1-1adcopt-00[1..6].ysm.sk1.yahoo.com:[1,2].a.tt"
     echo
 	exit
 fi 
 
 # Work with comma separated ranges.
-EXTENT=$(echo $1 | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g')
+EXTENT=$(echo $1 | sed -e 's/\:/\ /g' -e 's/\[/\{/g' -e 's/\]/\}/g')
 
 for range in $EXTENT
 do
     if [ -f $range ]
     then
-        for entry in `cat $range | egrep -v '^\#|^\s*$' \
-            | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g'`
+        for entry in \
+            $(cat $range \
+                | egrep -v '^\#|^\s*$' \
+                | sed -e 's/\#.*$//g'  \
+                      -e 's/\:/\ /g'   \
+                      -e 's/\[/\{/g'   \
+                      -e 's/\]/\}/g')
         do
-            for host in `eval echo $entry`
+            for host in $(eval echo $entry)
             do
                 echo $host
             done
         done
     elif [ -f $ALLFILES/hosts.$range ] 
     then
-        for entry in `cat $ALLFILES/hosts.$range | egrep -v '^\#|^\s*$' \
-            | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g'`
+        for entry in \
+            $(cat $ALLFILES/hosts.$range \
+                | egrep -v '^\#|^\s*$'   \
+                | sed -e 's/\#.*$//g'    \
+                      -e 's/\:/\ /g'     \
+                      -e 's/\[/\{/g'     \
+                      -e 's/\]/\}/g')
         do
-            for host in `eval echo $entry`
+            for host in $(eval echo $entry)
             do
                 echo $host
             done
         done
     elif [ -f $MYFILES/hosts.$range ]
     then
-        for entry in `cat $MYFILES/hosts.$range | egrep -v '^\#|^\s*$' \
-            | sed -e 's/\:/\ /g'  -e 's/\[/\{/g' -e 's/\]/\}/g'`
+        for entry in \
+            $(cat $MYFILES/hosts.$range \
+                | egrep -v '^\#|^\s*$'  \
+                | sed -e 's/\#.*$//g'   \
+                      -e 's/\:/\ /g'    \
+                      -e 's/\[/\{/g'    \
+                      -e 's/\]/\}/g')
         do
-            for host in `eval echo $entry`
+            for host in $(eval echo $entry)
             do
                 echo $host
             done
         done
     else
-        for host in `eval echo $range`
+        for host in $(eval echo $range)
         do
             echo $host
         done

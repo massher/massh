@@ -4,13 +4,43 @@ Massh is a mass ssh'er that allows for parallel execution of commands on remote 
 
 Massh also comes with Pingz, a mass ping'er that can also do mass DNS lookups. Finally, Massh comes with Ambit, a string expander that allows for both pre-defining groups of hosts as well as passing arbitrary strings that represent host groupings. The combination of Massh and Ambit creates a powerful way to manage groups of systems as configurable units.
 
-
 Why Massh?
 
 Massh has existed in one form or another for about 8 years. Over that time the lack of a fast, feature rich, generally available mass ssh'er kept Massh alive. During this time Massh was influenced by internally developed mass ssh'ers in use at various companies of employment. The focus has always been on a fast mass ssh'er that facilitates managing an environment of services, not servers. Finally, Massh's clean, organized output sets it apart from a lot of the mass ssh'ers in general use today.
 
-
 Massh Quick Start
+
+Massh Menu
+
+Massh has a menu option that makes Massh'ing easy for everyone:
+
+zombiebite $ massh -M
+
+Massh Menu
+1) Massh a Command
+2) Massh a File
+3) Massh a Script
+4) Help Text
+Choice? : 1
+
+Enter a filename, full file path, abitrary range or pre-defined
+range containing the hosts that you want to Massh to.
+
+HOSTS? : [1,2].a.tt
+
+Enter the command that will be Massh'ed to your remote hosts.
+
+COMMAND? : id bill
+
+Would you like Full Output or Simple Verification
+1) Full Output
+2) Simple Verification
+
+OUTPUT TYPE? : 1
+Running...
+2.a.tt : uid=502(bill) gid=502(bill) groups=502(bill),10(wheel),25(named),101(puppet),10000(ssh),10001(svn),48(apache)
+1.a.tt : uid=502(bill) gid=502(bill) groups=502(bill),10(wheel),25(named),101(puppet),10000(ssh),10001(svn),48(apache)
+For The Rest of Us
 
 1) Massh depends on having ssh public/private keys on all the machines that you will be connecting to. Not only does this make using massh inherently safer but it makes it easier to get things done. Generating SSH Public/Private key pairs is beyond the scope of this document.
 
@@ -52,54 +82,47 @@ web3.a.tt : 23:58:19 up 48 days,  6:07,  1 user,  load average: 0.00, 0.00, 0.00
 1.a.tt    : 23:58:20 up 48 days,  6:07,  1 user,  load average: 0.00, 0.00, 0.00
 Ideally you should be dangerous enough to stay busy for a while. Read on to become more dangerous.
 
-
 Running Massh
 
 The first thing to do is run massh with no options:
 
 zombiebite $ massh
 Usage: 
-      massh [ f,r ] [ c,s,p ] [ o,S[R],F[R] ]
-
-      -f        Filename with hostnames, one per line. Located in one
+      massh [-f file | -r range] [-c cmd | -s script | -p file]
+            [-o -D [-S -R] [-F -R]]
+      -f        File containing hostnames or ranges 
                 the following directories:
-                  * /usr/local/var/massh
-                  * /Users/mmarscha/massh
-                  * current directory
-      -r        Arbitrary or file defined ranges.
-      -c        Remote command to run.
+                    * /usr/local/var/massh
+                    * /Users/mmarscha/massh
+                    * $CWD, full path, relative path
+      -r        Arbitrary or file defined host groupings
+      -c        Command to run. Quote commands to insure execution.
       -s        Script to push to all hosts and run.
       -p        File to push to all hosts.
-      -o        Formatted output. Otherwise the Succeeded or
-                Failed exit status of the remote command is all you
-                will see.
-      -P        Number of concurrent or parallel ssh's to run,
-                the default is 30.
-      -t        ssh timeout in seconds, the default is 
+      -o        Full, hostname tagged output
+      -P        Number of parallel session. Default is 50
       -F        Output only hostnames where remote command failed.
       -S        Output only hostnames where remote command succeeded.
-      -R        Regurgitate F,S output in a format that can be
-                plugged right back into massh -r
-      -h        Help text or otherwise what you are reading right
-                now.
-      -O        Additional ssh options. The following options are
-                the defaults:
-
--o StrictHostKeyChecking=no -o LogLevel=QUIET -o BatchMode=yes -o ConnectTimeout=5 
-
+      -R        Regurgitate F,S output and feed back to massh -r
+      -D        Debug
+      -M        Massh Menu
+      -O        SSH options in additinon to the following:
+                 -o StrictHostKeyChecking=no -o LogLevel=QUIET
+                 -o BatchMode=yes -o ConnectTimeout=5 
+Output: 
+Succeeded  - The command, push, push/run ran with no errors.
+   Failed  - The connection, command, push, push/run failed.
+  Skipped  - Host was listed in one of the following files:
+                    * /usr/local/var/massh/hosts.down
+                    * /Users/mmarscha/massh/hosts.down
 Examples: 
-    massh -f hosts.txt -c 'uptime' -S
     massh -f /tmp/hosts.txt -c 'cat /etc/passwd | grep ^root:' -o
     massh -r dbservers -p ~/.hushlogin
     massh -r web.[1,5,[10..15]].google.com -c 'last | head -10' -o
-    massh -r webservers:dbservers:appservers -c 'df -h'
-    massh -r [1,2].a.tt -c 'ps -e | grep httpd | wc -l' -o
-
-
+    massh -r webservers:dbservers:appservers -c 'df -h' -o
 Massh Files
 
 Massh Files are files located the system wide directory: /usr/local/var/massh or in user specific directories: $HOME/massh that are prefixed with "hosts." "file." and/or "script." that Massh can make use of in various ways (outlined later in this document). Massh Files allow Systems Administrators to easily organize large scale command execution, configuration management, file syncronization and remote script pushing/running.
-
 
 Ambit Ranges
 
@@ -150,8 +173,6 @@ web1.a.tt : Succeeded
 The reason for doing this is that full output of a command can often times be way more than intended. As a default behavior it seems less obnoxious to see a "Succeeded" or "Failed" than 500 lines of returned output from each host because the following was run:
 
 massh -r web[1..4].a.tt -c dmesg
-
-
 Full Output of Remote Commands
 
 Of course a simple "Succeeded" or "Failed" does not suffice and thus there is the ( -o ) option for full output. The same command above with full output returns:
@@ -161,8 +182,6 @@ web2.a.tt : 00:31:22 up 45 days,  9:28,  0 users,  load average: 0.00, 0.00, 0.0
 web4.a.tt : 00:31:22 up 45 days,  9:28,  0 users,  load average: 0.00, 0.00, 0.00
 web1.a.tt : 00:31:23 up 48 days,  6:40,  1 user,  load average: 0.00, 0.00, 0.00
 web3.a.tt : 00:31:23 up 48 days,  6:40,  1 user,  load average: 0.00, 0.00, 0.00
-
-
 Pushing Files
 
 Massh can be used to push a file specified with the ( -p ) option to the hosts specified with the ( -r ) or ( -f ) option:
@@ -175,11 +194,9 @@ Using Massh Files, pushing can be done in a more organized way. All files locate
 zombiebite $ massh -r all -p httpd.conf
 web2.a.tt : Succeeded
 web1.a.tt : Succeeded
-
-
 Pushing and Running Scripts
 
-The first versions of Massh were actually created to push and run scripts to remote machines. This remains a very nice feature and is particularly useful when a single, over piped, run-on command just will not do. This option ( -s ) can be used with and without full output. Here's an simple script that writes a date and time string to a file as well as echo's it to standard output:
+The first versions of Massh were actually created to push and run scripts to remote machines. This remains a very nice feature and is particularly useful when a single, over piped, run-on command just will not do. This option ( -s ) can be used with and without full output. The ( -s ) option will push a script (prefixed with 'script.'), run the script and then removes the script from the remote host. Be sure to set the script's mode so that it can be executed. Here's an simple script that writes a date and time string to a file as well as echo's it to standard output:
 
 #!/bin/bash
 
@@ -205,12 +222,9 @@ As with pushing files, Massh Files located in /usr/local/var/massh or $HOME/mass
 zombiebite $ massh -r web[1,2].a.tt -s time -o
 web2.a.tt : 201008090252
 web1.a.tt : 201008090252
-
-
 hosts.down
 
 The Massh File hosts.down allows for the arbitrary skipping of hosts by Massh. Massh will check /usr/local/var/massh/hosts.down and $HOME/massh/hosts.down to see if a host should be skipped by a massh run for whatever reason. In my current position we us pingz to check the hosts in /usr/local/var/massh/hosts.all (which represents the master list of hosts for which my team is responsible) and populate /usr/local/var/massh/hosts.down with the hosts that fail their ping check. This happens every 10 minutes. The populating of hosts.down can and will be expanded to monitoring check results in addition to ping checking.
-
 
 Success, Failure, hosts.results and Regurgitate
 
@@ -227,8 +241,6 @@ For a quick example, let's say I have a file on one of two web servers. I do not
 
 zombiebite $ massh -r `massh -r web[1,2].a.tt -c 'test -f himom' -S -R` -c 'cat himom' -o
 web2.a.tt : UrDuh Best Mommy
-
-
 Syslog Logging
 
 Massh will try to use logger to log to syslog for each run of Massh. Here is an example of such logging:

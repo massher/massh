@@ -1,10 +1,9 @@
 #!/bin/bash
 
 # Name: pingz
-# Author: mmarschall
-# Modified: 20100808
-# Description:
-# Ping or Resolve hosts listed in a given file. 
+# Modified: 20100822
+# Description: Ping or Resolve hosts listed in a given file. 
+# Copyright: 2010 Michael Marschall
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,35 +21,26 @@
 # Get basename to utilize cute way of passing option/condition.
 IDOWOT=`basename $0`
 
-# Check system wide massh location for overrides. Otherwise set system wide
-# location for massh related 'hosts.' 'files.' and 'scripts.' files.
-# Check system wide massh location for overrides.
-if [ -f /usr/local/etc/$IDOWOT ]
-then
-    source /usr/local/etc/$IDOWOT
-fi
-if [ -f $HOME/.$IDOWOT ]
-then
-    source $HOME/.$IDOWOT
-fi
-if [ -z $ALLFILES ]
-then
-    ALLFILES="/usr/local/var/massh"
-fi
-if [ -z $MYFILES ]
-then
-    MYFILES="$HOME/massh"
-fi 
+# System Wide Config File and Massh Dir 
+[ -f /usr/local/etc/$IDOWOT ] && source /usr/local/etc/$IDOWOT
+[ -z $ALLFILES ] && ALLFILES="/usr/local/var/massh"
+
+# User Specific Config File and Massh Dir 
+[ -f $HOME/.$IDOWOT ] && source $HOME/.$IDOWOT
+[ -z $MYFILES ] && MYFILES="$HOME/massh"
 
 # Get OS.
 THISOS=`uname`
+
+# Set Path for Solaris
+PATH=$PATH:/usr/sbin
 
 ###############################################################################
 # Usage                                                                       #
 ###############################################################################
 function usage {
     echo "Usage:" 
-    echo "      $IDOWOT [ f,r ] [ l,p ] " 
+    echo "      $IDOWOT [-f file | -r range] [-l DNS lookup | -p ping]" 
     echo
     echo "      -f        Filename with hostnames, one per line. Located in one"
     echo "                the following directories:"
@@ -144,6 +134,10 @@ then
                 echo "$host is Down"
             fi
         fi 
+        if [ "$THISOS" = "SunOS" ]
+        then
+             ping $host
+        fi
         let "index = $index + 1"
     done
 elif [ "$LOOKUP" = yes ]

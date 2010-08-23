@@ -15,6 +15,41 @@
 <p>Massh has existed in one form or another for about 8 years. Over that time the lack of a fast, feature rich, generally available mass ssh'er kept Massh alive. During this time Massh was influenced by internally developed mass ssh'ers in use at various companies of employment. The focus has always been on a fast mass ssh'er that facilitates managing an environment of services, not servers. Finally, Massh's clean, organized output sets it apart from a lot of the mass ssh'ers in general use today.</p>
 
 <h1>Massh Quick Start</h1>
+
+<h2>Massh Menu</h2>
+
+<p> Massh has a menu option that makes Massh'ing easy for everyone:</p>
+<pre>
+zombiebite $ massh -M
+
+Massh Menu
+1) Massh a Command
+2) Massh a File
+3) Massh a Script
+4) Help Text
+Choice? : 1
+
+Enter a filename, full file path, abitrary range or pre-defined
+range containing the hosts that you want to Massh to.
+
+HOSTS? : [1,2].a.tt
+
+Enter the command that will be Massh'ed to your remote hosts.
+
+COMMAND? : id bill
+
+Would you like Full Output or Simple Verification
+1) Full Output
+2) Simple Verification
+
+OUTPUT TYPE? : 1
+Running...
+2.a.tt : uid=502(bill) gid=502(bill) groups=502(bill),10(wheel),25(named),101(puppet),10000(ssh),10001(svn),48(apache)
+1.a.tt : uid=502(bill) gid=502(bill) groups=502(bill),10(wheel),25(named),101(puppet),10000(ssh),10001(svn),48(apache)
+</pre>
+
+<h2>For The Rest of Us</h2>
+
 <p> 1) Massh depends on having ssh public/private keys on all the machines that you will be connecting to. Not only does this make using massh inherently safer but it makes it easier to get things done. <a href="http://sial.org/howto/openssh/publickey-auth/">Generating SSH Public/Private key pairs is beyond the scope of this document</a>.
 
 <p> 2) Once you have SSH keys setup on your target machines simply copy massh and ambit to /usr/local/bin or somewhere in your $PATH.</p>
@@ -73,41 +108,38 @@ web3.a.tt : 23:58:19 up 48 days,  6:07,  1 user,  load average: 0.00, 0.00, 0.00
 <pre>
 zombiebite $ massh
 Usage: 
-      massh [ f,r ] [ c,s,p ] [ o,S[R],F[R] ]
-
-      -f        Filename with hostnames, one per line. Located in one
+      massh [-f file | -r range] [-c cmd | -s script | -p file]
+            [-o -D [-S -R] [-F -R]]
+      -f        File containing hostnames or ranges 
                 the following directories:
-                  * /usr/local/var/massh
-                  * /Users/mmarscha/massh
-                  * current directory
-      -r        Arbitrary or file defined ranges.
-      -c        Remote command to run.
+                    * /usr/local/var/massh
+                    * /Users/mmarscha/massh
+                    * $CWD, full path, relative path
+      -r        Arbitrary or file defined host groupings
+      -c        Command to run. Quote commands to insure execution.
       -s        Script to push to all hosts and run.
       -p        File to push to all hosts.
-      -o        Formatted output. Otherwise the Succeeded or
-                Failed exit status of the remote command is all you
-                will see.
-      -P        Number of concurrent or parallel ssh's to run,
-                the default is 30.
-      -t        ssh timeout in seconds, the default is 
+      -o        Full, hostname tagged output
+      -P        Number of parallel session. Default is 50
       -F        Output only hostnames where remote command failed.
       -S        Output only hostnames where remote command succeeded.
-      -R        Regurgitate F,S output in a format that can be
-                plugged right back into massh -r
-      -h        Help text or otherwise what you are reading right
-                now.
-      -O        Additional ssh options. The following options are
-                the defaults:
-
--o StrictHostKeyChecking=no -o LogLevel=QUIET -o BatchMode=yes -o ConnectTimeout=5 
-
+      -R        Regurgitate F,S output and feed back to massh -r
+      -D        Debug
+      -M        Massh Menu
+      -O        SSH options in additinon to the following:
+                 -o StrictHostKeyChecking=no -o LogLevel=QUIET
+                 -o BatchMode=yes -o ConnectTimeout=5 
+Output: 
+Succeeded  - The command, push, push/run ran with no errors.
+   Failed  - The connection, command, push, push/run failed.
+  Skipped  - Host was listed in one of the following files:
+                    * /usr/local/var/massh/hosts.down
+                    * /Users/mmarscha/massh/hosts.down
 Examples: 
-    massh -f hosts.txt -c 'uptime' -S
     massh -f /tmp/hosts.txt -c 'cat /etc/passwd | grep ^root:' -o
     massh -r dbservers -p ~/.hushlogin
     massh -r web.[1,5,[10..15]].google.com -c 'last | head -10' -o
-    massh -r webservers:dbservers:appservers -c 'df -h'
-    massh -r [1,2].a.tt -c 'ps -e | grep httpd | wc -l' -o
+    massh -r webservers:dbservers:appservers -c 'df -h' -o
 </pre>
 
 <h2>Massh Files</h2>
@@ -205,7 +237,7 @@ web1.a.tt : Succeeded
 </pre>
 
 <h2>Pushing and Running Scripts</h2>
-<p>The first versions of Massh were actually created to push and run scripts to remote machines. This remains a very nice feature and is particularly useful when a single, over piped, run-on command just will not do. This option ( -s ) can be used with and without full output. Here's an simple script that writes a date and time string to a file as well as echo's it to standard output:</p>
+<p>The first versions of Massh were actually created to push and run scripts to remote machines. This remains a very nice feature and is particularly useful when a single, over piped, run-on command just will not do. This option ( -s ) can be used with and without full output. The ( -s ) option will <b>push</b> a script (prefixed with 'script.'), <b>run</b> the script and then <b>removes</b> the script from the remote host. Be sure to set the script's mode so that it can be executed. Here's an simple script that writes a date and time string to a file as well as echo's it to standard output:</p>
 
 <pre>
 #!/bin/bash
