@@ -1,0 +1,157 @@
+#!/bin/bash -
+
+# Name        :: massh
+# Modified    :: 20110627
+# Copyright   :: 2011 Michael Marschall
+# Description :: Mass SSH'er that can also push and run scripts.  
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Just Who The Heck Am I?
+MyNameIs=$(basename $0)
+
+# Turn On RAD Opts
+shopt -s extglob
+
+# Load Configuration and Functions
+source /etc/$MyNameIs/$MyNameIs.conf       || exit 1
+source /usr/lib/$MyNameIs/lib$MyNameIs.sh  || exit 1
+
+# A Place for hosts, scripts and your favorite files
+AllFiles="/var/$MyNameIs"
+
+# Another Place for hosts, scripts and your favorite files
+UsrFiles="$HOME/.$MyNameIs"
+
+# System Wide Configuration File
+AllConf="/etc/$MyNameIs/$MyNameIs.conf"
+
+# User Specific Configuration File 
+UsrConf="$HOME/.$MyNameIs.conf"
+
+# Validate All Non-Builtins Used By Massh
+TheCmds=(rm dirname logger grep sed tail mv mkdir ssh scp tee scp wc)
+
+for UhCmd in ${!TheCmds[*]}
+do
+    Validate ${TheCmds[$UhCmd]} || Failed Can\'t Find Command ${TheCmds[$UhCmd]}
+    eval "$(echo ${TheCmds[$UhCmd]})=$Results"
+done
+
+# If It Exists, Load User Specific Configuration File
+[ -f $UsrConf ] && source $UsrConf || echo "# $TimeStamp" > $UsrConf
+
+# Debug or Relative Silence?
+[ "$Debug" = "no"  ] && exec 2>/dev/null
+[ "$Debug" = "yes" ] && set -x
+
+# Set TmpDir
+[ -d $HOME/tmp ] && TmpDir=$HOME/tmp/.$MyNameIs || TmpDir=/tmp/.$MyNameIs-$USER
+
+# Make Sure Temp Dir Exists
+mkdir -p $TmpDir
+
+# Make Sure User's HostGroup Dir Exists
+mkdir -p $UsrFiles/hosts
+
+# Get SSH Version
+OpenSSHVersion="$(ssh -V &>/dev/stdout \
+    | sed -e 's/^OpenSSH\_\([0-9].[0-9]\).*$/\1/g')"
+
+###################### [ Usage/Help and CLI Checks ] ###########################
+
+# Usage/Help Heredoc
+Usage=$(cat <<End-of-message
+Run Commands, Run Scripts, Push Files, Pull Files - Parallelized 
+Usage:                                                          
+   Remote Commands:                                            
+      $MyNameIs [ HostGroup | file | string ] terse [RemoteCommand]
+      $MyNameIs [ HostGroup | file | string ] verbose [RemoteCommand]
+      $MyNameIs [ HostGroup | file | string ] worked [RemoteCommand]
+      $MyNameIs [ HostGroup | file | string ] bombed [RemoteCommand]
+
+   Remote Scripts:                                           
+      $MyNameIs [ HostGroup | file | string ] execute [PathToScript]
+
+   Push or Pull Files:                                     
+      $MyNameIs [ HostGroup | file | string ] pull [PathToFile]
+      $MyNameIs [ HostGroup | file | string ] push [PathToFile]
+
+   Option Controls:
+      $MyNameIs list options
+      $MyNameIs edit option [OptionName]
+
+Example[s]:                                              
+      $MyNameIs all verbose uptime                        
+      $MyNameIs all.a.tt execute chkrrdprogress 
+      $MyNameIs app[1..10] push /etc/my.cnf 
+
+End-of-message)
+
+# No Options or Help
+[ -z "$1" ] || [[ "$1" == +(--help|-h|help) ]] && echo "$Usage" && exit 2
+
+############################# [ Execution ] ####################################
+
+# Option Controls
+[[ "$1" == +(ls|show|list)   && "$2" == +(opts|options) ]] && List_Options "$@"
+[[ "$1" == +(ed|change|edit) && "$2" == +(opt|option)   ]] && Edit_Options "$@"
+
+# Generate Targets (Host List) Based On First Positional Parameter $1
+MyHostGroup="$1"
+List=($(${HostsFrom} $MyHostGroup))
+
+# Array for base SSH options.
+SSHOPTS[0]="-o StrictHostKeyChecking=no"
+SSHOPTS[1]="-o BatchMode=yes"
+
+# Array for Connection Control and Persistence.
+[ -n "$ControlMaster" ] \
+    && [ -n "$ControlPath" ] \
+    && SSHOPTS[2]="-o ControlMaster=$ControlMaster"
+
+[ -n "$ControlMaster" ] \
+    && [ -n "$ControlPath" ] \
+    && SSHOPTS[3]="-o ControlPath=$ControlPath"
+
+[ -n "$ControlMaster" ] \
+    && [ -n "$ControlPath" ] \
+    && [ -n "$ControlPersist" ] \
+    && [ $OpenSSHVersion \> 5.6 ] \
+    && SSHOPTS[4]="-o ControlPersist=$ControlPersist"
+
+[ "$ForcePseudoTTY" = "yes" ] \
+    && SSHOPTS[5]="-t "
+
+[ -n "$ControlMaster" ] \
+    && [ -n "$ControlPath" ] \
+    && SSHOPTS[6]=" -o LogLevel=$SSHLogLevel"
+
+# [Try] To Log Command Execution to Syslog
+[ "$SyslogMassh" = "yes" ] \
+    && ${logger} -i -t $MyNameIs -- "USER=$USER COMMAND=$MyNameIs $@"
+
+# Set SubCommand If It Is Not Known
+[ -z "$SubCommand" ] && SubCommand="$2" && shift 2 || shift 1
+
+# Generate $HOME/.massh/hosts/results
+Generate_Results
+
+# Create Pull Dir If We're Pull'n
+[ "$SubCommand" = "pull" ] && mkdir -p $UsrFiles/pull
+
+# Start Up The Flight Loop
+Flight_Loop "$@"
+
+wait

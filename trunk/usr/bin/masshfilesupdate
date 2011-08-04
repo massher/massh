@@ -1,0 +1,71 @@
+#!/bin/bash -e
+
+# Name        :: masshfilesupdate
+# Created     :: Thu May 26 21:00:58 2011
+# Modified    :: Fri Jul 29 03:25:15 2011
+# Copyright   :: 2011 Mike Marschall
+# Description :: Update Massh File Location/Naming/Formatting 1.0 => 2.0
+
+# This file is part of Massh
+
+# Massh is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# Massh is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+
+basename=$(type -P basename)
+     sed=$(type -P sed     )
+    grep=$(type -P grep    )
+    find=$(type -P find    )
+  logger=$(type -P logger  )
+   mkdir=$(type -P mkdir   )
+      rm=$(type -P rm      )
+     cat=$(type -P cat     )
+
+function Failed {
+    MyNameIs=$(echo ${MyNameIs} | ${sed} 's/^[a-z]?/[A-Z]/g')
+    ${logger} -i -t ${MyNameIs} -- "Error - $@"
+    echo "$@"
+    exit 2
+}
+
+for MasshFileType in host script file 
+do
+    OldFilePath="$HOME/massh"
+    NewFilePath="$HOME/.ambit/${MasshFileType}s"
+
+    [ "$EUID" = "0" ] && OldFilePath="/usr/local/var/massh"
+    [ "$EUID" = "0" ] && NewFilePath="/var/ambit/${MasshFileType}s"
+    
+    [ -f $HOME/.ambit ] && ${rm} -rf $HOME/.ambit
+
+    ${mkdir} -p ${NewFilePath} || Failed Can\'t find or create ${HostPath}
+
+    for MasshFile in $(${grep} ^.*\/${MasshFileType}.\.*$ \
+        <(${find} ${OldFilePath} -type f))
+    do 
+             # Basename Of File
+             # Suffix Trimmed From File
+         BOF=$(${basename} ${MasshFile})
+        STFF=$(${sed} "s/^${MasshFileType}s\?\.//" <(echo ${BOF}))
+    
+        [ "${MasshFileType}" = "host" ] \
+            && touch ${NewFilePath}/${STFF} \
+            && echo -e "#\n# Summary - ${STFF}\n#" > ${NewFilePath}/${STFF} \
+            && ${cat} ${OldFilePath}/${BOF} >> ${NewFilePath}/${STFF}
+        
+        [ "${MasshFileType}" = "script" ] \
+            && cp ${OldFilePath}/${BOF} ${NewFilePath}/${STFF}
+
+        [ "${MasshFileType}" = "file" ] \
+            && cp ${OldFilePath}/${BOF} ${NewFilePath}/${STFF}
+    done 
+done
